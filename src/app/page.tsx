@@ -15,40 +15,76 @@ import {getAnalytics} from 'firebase/analytics';
 
 // Firebase configuration
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  apiKey: "AIzaSyCWZr4Olz0Q2jL7RD-p3uFRggkGcoXmK3Y",
+  authDomain: "weblock-f4fc1.firebaseapp.com",
+  databaseURL: "https://weblock-f4fc1-default-rtdb.firebaseio.com",
+  projectId: "weblock-f4fc1",
+  storageBucket: "weblock-f4fc1.firebasestorage.app",
+  messagingSenderId: "888306996203",
+  appId: "1:888306996203:web:ae4a8a7608e125781abfae",
+  measurementId: "G-SLR65WSY0R"
 };
 
 let app: FirebaseApp;
 let db: any;
 
 // Initialize Firebase
-if (
-  firebaseConfig.apiKey &&
-  firebaseConfig.authDomain &&
-  firebaseConfig.databaseURL &&
-  firebaseConfig.projectId &&
-  firebaseConfig.storageBucket &&
-  firebaseConfig.messagingSenderId &&
-  firebaseConfig.appId &&
-  firebaseConfig.measurementId
-) {
-  try {
-    app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
+try {
+  console.log('Initializing Firebase with config:', {
+    apiKey: firebaseConfig.apiKey,
+    databaseURL: firebaseConfig.databaseURL,
+    projectId: firebaseConfig.projectId
+  });
+  app = initializeApp(firebaseConfig);
+  db = getDatabase(app);
+  
+  // Test database connection
+  const testRef = ref(db, '.info/connected');
+  onValue(testRef, (snapshot) => {
+    const connected = snapshot.val();
+    if (connected) {
+      console.log('Connected to Firebase Realtime Database');
+      
+      // Check for initial data
+      const rootRef = ref(db);
+      onValue(
+        rootRef, 
+        (snapshot) => {
+          console.log('Database structure:', snapshot.exists() ? 'Data exists' : 'No data');
+          if (!snapshot.exists()) {
+            console.log('Creating initial database structure');
+            // Create initial structure if not exists
+            const updates: {[key: string]: any} = {};
+            updates['users'] = {};
+            updates['logs'] = {};
+            update(rootRef, updates)
+              .then(() => console.log('Initial database structure created'))
+              .catch(error => console.error('Error creating initial structure:', error));
+          }
+        }, 
+        { onlyOnce: true }
+      );
+    } else {
+      console.warn('Disconnected from Firebase Realtime Database');
+      console.warn('Make sure your Firebase database rules allow read/write access:');
+      console.warn(`
+        Recommended rules for testing:
+        {
+          "rules": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      `);
+    }
+  });
+  
+  if (typeof window !== 'undefined') {
     getAnalytics(app);
-    console.log('Firebase initialized successfully!');
-  } catch (error: any) {
-    console.error('Firebase initialization error:', error.message);
   }
-} else {
-  console.warn('Firebase configuration is incomplete. Check your environment variables.');
+  console.log('Firebase initialized successfully!');
+} catch (error: any) {
+  console.error('Firebase initialization error:', error.message);
 }
 
 export default function Home() {
@@ -63,6 +99,8 @@ export default function Home() {
       console.warn('Firebase not initialized. Check your environment variables and Firebase configuration.');
       return;
     }
+    
+    console.log('Initializing Firebase Realtime Database listeners');
 
     // Read users from Firebase Realtime Database
     const usersRef = ref(db, 'users');
@@ -100,8 +138,13 @@ export default function Home() {
     set(newLogRef, {
       message: message,
       timestamp: Date.now(),
+    })
+    .then(() => {
+      console.log('Log written successfully:', message);
+    })
+    .catch((error) => {
+      console.error('Error writing log to Firebase:', error);
     });
-
   };
 
   const toggleLock = () => {
@@ -150,14 +193,24 @@ export default function Home() {
     if (rfid && name) {
       // Write user to Firebase Realtime Database
       const usersRef = ref(db, 'users');
-      set(child(usersRef, rfid), name);
-
-      writeLog(`User Added: RFID ${rfid} - ${name}`);
-      toast({
-        title: 'User Added',
-        description: `User ${name} added with RFID ${rfid}.`,
-      });
-      setRfid(''); // Clear RFID after adding user
+      set(child(usersRef, rfid), name)
+        .then(() => {
+          console.log('User added successfully:', rfid, name);
+          writeLog(`User Added: RFID ${rfid} - ${name}`);
+          toast({
+            title: 'User Added',
+            description: `User ${name} added with RFID ${rfid}.`,
+          });
+          setRfid(''); // Clear RFID after adding user
+        })
+        .catch((error) => {
+          console.error('Error adding user to Firebase:', error);
+          toast({
+            title: 'Error',
+            description: `Failed to add user: ${error.message}`,
+            variant: 'destructive',
+          });
+        });
     } else {
       toast({
         title: 'Error',
@@ -170,13 +223,23 @@ export default function Home() {
   const handleDeleteUser = (rfidToDelete: string) => {
     // Remove user from Firebase Realtime Database
     const userRef = ref(db, `users/${rfidToDelete}`);
-    remove(userRef);
-
-    writeLog(`User Deleted: RFID ${rfidToDelete}`);
-    toast({
-      title: 'User Deleted',
-      description: `User with RFID ${rfidToDelete} has been deleted.`,
-    });
+    remove(userRef)
+      .then(() => {
+        console.log('User deleted successfully:', rfidToDelete);
+        writeLog(`User Deleted: RFID ${rfidToDelete}`);
+        toast({
+          title: 'User Deleted',
+          description: `User with RFID ${rfidToDelete} has been deleted.`,
+        });
+      })
+      .catch((error) => {
+        console.error('Error deleting user from Firebase:', error);
+        toast({
+          title: 'Error',
+          description: `Failed to delete user: ${error.message}`,
+          variant: 'destructive',
+        });
+      });
   };
 
   return (
